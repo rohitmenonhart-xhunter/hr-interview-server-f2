@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HR Interview Simulator (Google Meet Style)</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body, html {
+            font-family: 'Roboto', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: #202124;
+            color: white;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background-color: #202124;
+        }
+        .meeting-name {
+            font-size: 18px;
+            font-weight: 400;
+        }
+        .header-controls {
+            display: flex;
+            align-items: center;
+        }
+        .header-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            margin-left: 16px;
+            cursor: pointer;
+        }
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            padding: 16px;
+            overflow: hidden;
+        }
+        .video-area {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            overflow: hidden;
+        }
+        .participant {
+            width: 320px;
+            height: 180px;
+            margin: 8px;
+            background-color: #3c4043;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        .participant img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .participant-name {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .side-panel {
+            width: 320px;
+            background-color: #282a2d;
+            border-radius: 8px;
+            margin-left: 16px;
+            padding: 16px;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+            transform: translateX(0);
+        }
+        .side-panel.hidden {
+            transform: translateX(100%);
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            padding: 16px;
+            background-color: #202124;
+        }
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background-color: #3c4043;
+            color: white;
+            font-size: 18px;
+            margin: 0 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .control-btn.red {
+            background-color: #ea4335;
+        }
+        #transcriptionBox {
+            width: 100%;
+            height: 100px;
+            padding: 8px;
+            background-color: #3c4043;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            resize: none;
+            margin-bottom: 16px;
+        }
+        #resumeUpload, #uploadButton, #startInterview, #submitResponse, #concludeInterview {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 8px;
+            background-color: #3c4043;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="meeting-name">HR Interview Simulator</div>
+            <div class="header-controls">
+                <button class="header-btn" id="toggleParticipants">👥</button>
+                <button class="header-btn" id="toggleChat">💬</button>
+                <button class="header-btn">🛠️</button>
+            </div>
+        </div>
+        <div class="main-content">
+            <div class="video-area">
+                <div class="participant">
+                    <img src="3.png" alt="Interviewer">
+                    <div class="participant-name">Interviewer</div>
+                </div>
+                <div class="participant">
+                    <img src="2.png" alt="You">
+                    <div class="participant-name">You</div>
+                </div>
+            </div>
+            <div class="side-panel" id="sidePanel">
+                <input type="file" id="resumeUpload" accept="application/pdf" />
+                <button id="uploadButton">Upload Resume</button>
+                <button id="startInterview">Start Interview</button>
+                <button id="submitResponse">Submit Response</button>
+                <button id="concludeInterview">Conclude Interview</button>
+                <textarea id="transcriptionBox" placeholder="Transcription will appear here..."></textarea>
+                <div id="questions"></div>
+                <div id="feedback"></div>
+            </div>
+        </div>
+        <div class="controls">
+            <button class="control-btn" id="microphoneBtn">🎤</button>
+            <button class="control-btn" id="videoBtn">📹</button>
+            <button class="control-btn" id="presentBtn">🖥️</button>
+            <button class="control-btn" id="moreBtn">⋯</button>
+            <button class="control-btn red" id="hangupBtn">📞</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadButton = document.getElementById('uploadButton');
+            const startInterview = document.getElementById('startInterview');
+            const submitResponse = document.getElementById('submitResponse');
+            const concludeInterview = document.getElementById('concludeInterview');
+            const transcriptionBox = document.getElementById('transcriptionBox');
+            const toggleParticipants = document.getElementById('toggleParticipants');
+            const toggleChat = document.getElementById('toggleChat');
+            const sidePanel = document.getElementById('sidePanel');
+            const microphoneBtn = document.getElementById('microphoneBtn');
+            const hangupBtn = document.getElementById('hangupBtn');
+
+            let currentQuestionIndex = 0;
+            let followUpIndex = 0;
+            let interviewQuestions = ["Tell me about yourself"];
+            let interviewHistory = '';
+            let transcriptionText = '';
+            let recognition;
+            let recordingInProgress = false;
+            let currentQuestion;
+            let resumeText = '';
+            let isTTSPlaying = false;
+
+            // Initialize Speech Recognition
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = 'en-US';
+
+                recognition.onresult = (event) => {
+                    let interimTranscript = '';
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                    transcriptionText = interimTranscript;
+                    transcriptionBox.value = transcriptionText;
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    if (event.error === 'no-speech') {
+                        alert('No speech detected. Please try again.');
+                    }
+                };
+
+                recognition.onend = () => {
+                    if (recordingInProgress) {
+                        recognition.start(); // Restart recognition if needed
+                    }
+                };
+            } else {
+                alert('Speech recognition not supported in this browser.');
+            }
+
+            uploadButton.addEventListener('click', async () => {
+                const resumeFile = document.getElementById('resumeUpload').files[0];
+                if (!resumeFile) return alert('Please upload a resume');
+
+                const formData = new FormData();
+                formData.append('file', resumeFile);
+
+                try {
+                    const response = await axios.post('https://hr-interview-server-f1.onrender.com/generate_questions', formData, {
+                        headers: {
+                            'Content-Type': 'multipart/form-data'
+                        }
+                    });
+
+                    interviewQuestions = ["Tell me about yourself", ...response.data.questions];
+                    resumeText = response.data.resume_text;
+                    document.getElementById('questions').innerText = 'Questions generated based on your resume will be asked in turn.';
+                    currentQuestionIndex = 0;
+                    followUpIndex = 0;
+                    interviewHistory = '';
+                    transcriptionBox.value = '';
+                } catch (error) {
+                    console.error('Error uploading resume:', error);
+                    alert('Error uploading resume.');
+                }
+            });
+
+            startInterview.addEventListener('click', async () => {
+                if (interviewQuestions.length === 0) return alert('No questions available. Please upload a resume first.');
+
+                await askNextQuestion(); // Start the interview
+            });
+
+            submitResponse.addEventListener('click', async () => {
+                transcriptionText = transcriptionBox.value;
+                if (transcriptionText) {
+                    try {
+                        stopRecording(); // Stop recording after response is submitted
+
+                        if (followUpIndex < 2) {
+                            // Get a follow-up question
+                            const response = await axios.post('https://hr-interview-server-f1.onrender.com/generate_follow_up', {
+                                question: currentQuestion,
+                                response: transcriptionText,
+                                resume_text: resumeText
+                            });
+
+                            const followUpQuestions = response.data.follow_up_questions;
+                            if (followUpQuestions.length > 0) {
+                                const followUpQuestion = followUpQuestions[1];
+                                transcriptionBox.value = followUpQuestion;
+
+                                // Read follow-up question aloud using TTS
+                                isTTSPlaying = true;
+                                const audio = new Audio();
+                                audio.src = await getTTSUrl(followUpQuestion);
+                                audio.onended = () => {
+                                    isTTSPlaying = false;
+                                    startRecording(); // Start recording only after TTS finishes
+                                };
+                                audio.play();
+                            } else {
+                                followUpIndex = 0; // Reset for next main question
+                                transcriptionText = ''; // Clear transcription after sending
+                                transcriptionBox.value = '';
+                                await askNextQuestion(); // Ask next main question
+                            }
+                        } else {
+                            followUpIndex = 0; // Reset for next main question
+                            transcriptionText = ''; // Clear transcription after sending
+                            transcriptionBox.value = '';
+                            await askNextQuestion(); // Ask next main question
+                        }
+                    } catch (error) {
+                        console.error('Error generating follow-up questions:', error);
+                        alert('Error generating follow-up questions.');
+                    }
+                }
+            });
+
+            concludeInterview.addEventListener('click', async () => {
+                try {
+                    stopRecording(); // Stop recording when concluding the interview
+                    const response = await axios.post('https://hr-interview-server-f1.onrender.com/generate_feedback', {
+                        interview_history: interviewHistory
+                    });
+
+                    const feedback = response.data.feedback;
+                    document.getElementById('feedback').innerText = feedback;
+                } catch (error) {
+                    console.error('Error generating feedback:', error);
+                    alert('Error generating feedback.');
+                }
+            });
+
+            async function askNextQuestion() {
+                if (currentQuestionIndex < interviewQuestions.length) {
+                    currentQuestion = interviewQuestions[currentQuestionIndex];
+                    transcriptionBox.value = currentQuestion;
+
+                    // Read question aloud using TTS
+                    isTTSPlaying = true;
+                    const audio = new Audio();
+                    audio.src = await getTTSUrl(currentQuestion);
+                    audio.onended = () => {
+                        isTTSPlaying = false;
+                        startRecording(); // Start recording only after TTS finishes
+                    };
+                    audio.play();
+
+                    // Update interview history
+                    interviewHistory += `\nQ: ${currentQuestion}\nA: `;
+
+                    // Increment question index
+                    currentQuestionIndex += 1;
+                } else {
+                    transcriptionBox.value = 'All questions have been asked.';
+                }
+            }
+
+            async function getTTSUrl(text) {
+                try {
+                    const response = await axios.post('https://hr-interview-server-f1.onrender.com/tts', { text }, {
+                        responseType: 'blob'
+                    });
+
+                    const url = URL.createObjectURL(response.data);
+                    return url;
+                } catch (error) {
+                    console.error('Error generating TTS:', error);
+                    return null;
+                }
+            }
+
+            function startRecording() {
+                if (recognition && !recordingInProgress && !isTTSPlaying) {
+                    recognition.start();
+                    recordingInProgress = true;
+                }
+            }
+
+            function stopRecording() {
+                if (recognition && recordingInProgress) {
+                    recognition.stop();
+                    recordingInProgress = false;
+                }
+            }
+
+            // Toggle side panel visibility
+            toggleParticipants.addEventListener('click', () => {
+                sidePanel.classList.toggle('hidden');
+            });
+
+            // Toggle chat visibility (if needed)
+            toggleChat.addEventListener('click', () => {
+                // Implement chat toggle logic if necessary
+            });
+
+            // Handle mobile layout
+            const mobileLayout = window.matchMedia("(max-width: 768px)");
+
+            function updateLayout() {
+                if (mobileLayout.matches) {
+                    sidePanel.classList.add('hidden');
+                } else {
+                    sidePanel.classList.remove('hidden');
+                }
+            }
+
+            mobileLayout.addEventListener('change', updateLayout);
+
+            // Check initial layout on page load
+            updateLayout();
+        });
+    </script>
+</body>
+</html>
